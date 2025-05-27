@@ -11,3 +11,9 @@ __pycache__/
 
 # ignore wandb logs
 wandb/*
+
+# virtual environment
+.venv/
+
+#logs
+logs/
