@@ -209,7 +209,7 @@ class RoomObstacleEnv:
 
 if __name__ == "__main__":
 
-    env = RoomEnv()
+    env = RoomObstacleEnv()
 
     for i in range(0, 5000):
         a = env.random_action()
