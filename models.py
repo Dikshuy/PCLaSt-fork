@@ -14,17 +14,17 @@ from vector_quantize_pytorch import VectorQuantize
 
 ce = nn.CrossEntropyLoss()
 
+# not used in the current version # dk
+# class GaussianFourierProjectionTime(nn.Module):
+#     """Gaussian Fourier embeddings for noise levels."""
 
-class GaussianFourierProjectionTime(nn.Module):
-    """Gaussian Fourier embeddings for noise levels."""
+#     def __init__(self, embedding_size=256, scale=1.0):
+#         super().__init__()
+#         self.W = nn.Parameter(torch.randn(embedding_size) * scale, requires_grad=False)
 
-    def __init__(self, embedding_size=256, scale=1.0):
-        super().__init__()
-        self.W = nn.Parameter(torch.randn(embedding_size) * scale, requires_grad=False)
-
-    def forward(self, x):
-        x_proj = x[:, None] * self.W[None, :] * 2 * np.pi
-        return torch.cat([torch.sin(x_proj), torch.cos(x_proj)], dim=-1)
+#     def forward(self, x):
+#         x_proj = x[:, None] * self.W[None, :] * 2 * np.pi
+#         return torch.cat([torch.sin(x_proj), torch.cos(x_proj)], dim=-1)
 
 
 class ResMLP(nn.Module):
@@ -48,7 +48,7 @@ class AC(nn.Module):
         super().__init__()
 
         self.kemb = nn.Embedding(nk, din)
-        self.cemb = nn.Embedding(150, din)
+        # self.cemb = nn.Embedding(150, din)    # not used in the current version # dk
 
         #self.m = nn.Sequential(nn.Linear(din*3, 256), nn.BatchNorm1d(256), nn.LeakyReLU(), nn.Linear(256,256), nn.BatchNorm1d(256), nn.LeakyReLU(), nn.Linear(256, 256))
         self.m = nn.Sequential(nn.Linear(din*3, 256), ResMLP(256), ResMLP(256))
@@ -56,16 +56,17 @@ class AC(nn.Module):
         #self.m_cond = nn.Sequential(nn.Linear(din*4, 256), ResMLP(256), ResMLP(256))
 
         self.acont_pred = nn.Linear(256, nact)
-        self.adisc_pred = nn.Linear(256, 150)
+        self.adisc_pred = nn.Linear(256, 150)  # paper mentions 20 discrete actions - discrepancy with the code, which uses 150 discrete actions
 
-        self.yl = nn.Sequential(nn.Linear(2,din), nn.Tanh(), nn.Linear(din,din))
-        self.tl = GaussianFourierProjectionTime(din//2)
+        # these two are not used in the current version
+        # self.yl = nn.Sequential(nn.Linear(2,din), nn.Tanh(), nn.Linear(din,din)) # dk
+        # self.tl = GaussianFourierProjectionTime(din//2)  # dk
 
     def forward(self, st, stk, k, a): 
 
         loss = 0.0
 
-        a_cont = a[:,:2]
+        a_cont = a[:,:2]    # check what's the shape of a
         a_disc = a[:,2].long()
 
 
