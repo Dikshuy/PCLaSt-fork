@@ -163,7 +163,6 @@ class LatentForward(nn.Module):
 class Encoder(nn.Module):
     def __init__(self, din, dout, ndiscrete=None):
         super().__init__()
-        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
         contrastive_dim = dout
         self.mixer = mixer.MLP_Mixer(n_layers=2, n_channel=32, n_hidden=32, n_output=32*4*4, image_size_h=100, image_size_w=100, patch_size=10, n_image_channel=1)
@@ -177,11 +176,11 @@ class Encoder(nn.Module):
 
         self.m = nn.Sequential(nn.Linear(32*4*4*2, 256), nn.LeakyReLU(), nn.Linear(256, dout))
 
-        self.contrastive = nn.Sequential(nn.Linear(dout, 512), nn.LeakyReLU(), nn.Linear(512,512), nn.LeakyReLU(), nn.Linear(512, contrastive_dim)).to(self.device)
-        self.w_contrast = nn.Linear(1,1).to(self.device)#nn.Parameter(torch.ones(1,1).float()).cuda()
-        self.b_contrast = nn.Linear(1,1).to(self.device)#nn.Parameter(torch.ones(1,1).float()).cuda()
-        self.contrast_inv = nn.Sequential(nn.Linear(contrastive_dim, 512), nn.LeakyReLU(), nn.Linear(512, dout)).to(self.device)
-        self.vq = VectorQuantize(dim=contrastive_dim, codebook_size=ndiscrete, decay=0.8, commitment_weight=1.0, threshold_ema_dead_code = 0.1, heads=1, kmeans_init=True).to(self.device)
+        self.contrastive = nn.Sequential(nn.Linear(dout, 512), nn.LeakyReLU(), nn.Linear(512,512), nn.LeakyReLU(), nn.Linear(512, contrastive_dim))
+        self.w_contrast = nn.Linear(1,1)#nn.Parameter(torch.ones(1,1).float()).cuda()
+        self.b_contrast = nn.Linear(1,1)#nn.Parameter(torch.ones(1,1).float()).cuda()
+        self.contrast_inv = nn.Sequential(nn.Linear(contrastive_dim, 512), nn.LeakyReLU(), nn.Linear(512, dout))
+        self.vq = VectorQuantize(dim=contrastive_dim, codebook_size=ndiscrete, decay=0.8, commitment_weight=1.0, threshold_ema_dead_code = 0.1, heads=1, kmeans_init=True)
 
     def forward(self, x):
 
@@ -200,7 +199,7 @@ class Encoder(nn.Module):
         h1 = h1.reshape((h.shape[0], -1))
         h2 = h2.reshape((h.shape[0], -1))
 
-        h = torch.cat([h1*0.0,h2],dim=1)
+        h = torch.cat([h1,h2],dim=1)
 
         return self.m(h)
 
