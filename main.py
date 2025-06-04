@@ -294,32 +294,30 @@ if __name__ == '__main__':
     os.makedirs(train_data_folder, exist_ok=True)
 
     if args.opr == 'generate-data':
-        X = []
-        A = []
-        ast = []
-        est = []
+        X = np.zeros((args.num_data_samples, 100, 100), dtype=np.float32)
+        A = np.zeros((args.num_data_samples, 2), dtype=np.float32)
+        ast = np.zeros((args.num_data_samples, 2), dtype=np.float32)
+        est = np.zeros((args.num_data_samples, 2), dtype=np.float32)
 
-        for i in tqdm(range(0, args.num_data_samples)):
+        for i in tqdm(range(args.num_data_samples)):
             a = env.random_action()
-
             x, agent_state, exo_state = env.get_obs()
             env.step(a)
+            
+            X[i] = x
+            A[i] = a
+            ast[i] = agent_state
+            est[i] = exo_state
+        
+        dataset = {'X': X, 'A': A, 'ast': ast, 'est': est}
 
-            A.append(a[:])
-            X.append(x[:])
-            ast.append(agent_state[:])
-            est.append(exo_state[:])
+        with open(dataset_path, 'wb') as f:
+            pickle.dump(dataset, f)
 
-        X = np.asarray(X).astype('float32')
-        A = np.asarray(A).astype('float32')
-        ast = np.array(ast).astype('float32')
-        est = np.array(est).astype('float32')
-
-        pickle.dump({'X': X, 'A': A, 'ast': ast, 'est': est}, open(dataset_path, 'wb'))
-        pickle.dump({'X': X}, open(os.path.join(data_folder, "images.p"), 'wb'))
-        pickle.dump({'A': A}, open(os.path.join(data_folder, "actions.p"), 'wb'))
-        pickle.dump({'ast': ast}, open(os.path.join(data_folder, "agent_state.p"), 'wb'))
-        pickle.dump({'est': est}, open(os.path.join(data_folder, "exo_state.p"), 'wb'))
+        np.save(os.path.join(data_folder, "images.npy"), X)
+        np.save(os.path.join(data_folder, "actions.npy"), A)
+        np.save(os.path.join(data_folder, "agent_state.npy"), ast)
+        np.save(os.path.join(data_folder, "exo_state.npy"), est)
 
         print(f'data generated and stored in {dataset_path}')
     elif args.opr == 'train':
