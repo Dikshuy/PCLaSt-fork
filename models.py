@@ -201,7 +201,7 @@ class Encoder(nn.Module):
         h1 = h1.reshape((h.shape[0], -1))
         h2 = h2.reshape((h.shape[0], -1))
 
-        h = torch.cat([h1*0.0,h2],dim=1)
+        h = h2
 
         return self.m(h)
 
