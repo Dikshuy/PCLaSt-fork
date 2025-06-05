@@ -176,7 +176,7 @@ class Encoder(nn.Module):
         #self.bn2 = nn.BatchNorm2d(32)
         self.bn2 = nn.GroupNorm(4,32)
 
-        self.m = nn.Sequential(nn.Linear(32*4*4*2, 256), nn.LeakyReLU(), nn.Linear(256, dout))
+        self.m = nn.Sequential(nn.Linear(32*4*4, 256), nn.LeakyReLU(), nn.Linear(256, dout))
 
         self.contrastive = nn.Sequential(nn.Linear(dout, 512), nn.LeakyReLU(), nn.Linear(512,512), nn.LeakyReLU(), nn.Linear(512, contrastive_dim)).to(device)
         self.w_contrast = nn.Linear(1,1).to(device)#nn.Parameter(torch.ones(1,1).float()).cuda()
