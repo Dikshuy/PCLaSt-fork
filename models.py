@@ -182,7 +182,7 @@ class Encoder(nn.Module):
         self.w_contrast = nn.Linear(1,1).to(device)#nn.Parameter(torch.ones(1,1).float()).cuda()
         self.b_contrast = nn.Linear(1,1).to(device)#nn.Parameter(torch.ones(1,1).float()).cuda()
         self.contrast_inv = nn.Sequential(nn.Linear(contrastive_dim, 512), nn.LeakyReLU(), nn.Linear(512, dout)).to(device)
-        self.vq = VectorQuantize(dim=contrastive_dim, codebook_size=ndiscrete, decay=0.8, commitment_weight=1.0, threshold_ema_dead_code = 0.1, heads=1, kmeans_init=True).to(device)
+        self.vq = VectorQuantize(dim=contrastive_dim, codebook_size=ndiscrete, decay=0.8, commitment_weight=1.0, threshold_ema_dead_code = 0.1, heads=1, kmeans_init=False).to(device)
 
     def forward(self, x):
 
