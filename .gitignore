@@ -16,4 +16,4 @@ wandb/*
 .venv/
 
 #logs
-logs/
+logs*/
