@@ -76,7 +76,7 @@ def main():
     parser.add_argument('--env', required=True, 
                         choices=['polygon-obs', 'room-multi-passage', 'room-spiral', 'room-multi-passage-large'],
                         help='Environment type')
-    parser.add_argument('--logdir', default='logs', help='Base log directory')
+    parser.add_argument('--taskdir', default='tasks', help='Base tasks directory')
     parser.add_argument('--num-episodes', default=50, type=int, help='Number of test episodes')
     parser.add_argument('--seed', default=42, type=int, help='Seed for test set generation')
     parser.add_argument('--min-distance', default=0.2, type=float, help='Minimum distance between start and goal')
@@ -85,9 +85,9 @@ def main():
     
     # Create environment
     env = get_env(args.env)
-    
-    # Create directories
-    eval_dir = os.path.join(args.logdir, args.env, 'evaluation')
+
+    os.makedirs(args.taskdir, exist_ok=True)
+    eval_dir = os.path.join(args.taskdir, args.env, 'evaluation')
     os.makedirs(eval_dir, exist_ok=True)
     
     # Generate test cases
