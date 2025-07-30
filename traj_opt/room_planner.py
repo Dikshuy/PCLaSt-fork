@@ -28,7 +28,7 @@ class LowPlannerParams:
 def room_high_low_planner(env, nz, nu, enc, dynamics, a_probe, empirical_mdp, kmeans, cluster_trans,
                           init_gt_agent_state, init_lat_state, init_mdp_state, 
                           target_gt_agent_state, target_lat_state, target_mdp_state,
-                          save_path = None, augmented = False):
+                          save_path = None, augmented = False, success_threshold = 0.030):
     # use both high-level and low-level planner in the room env. 
 
     opt_params = LowPlannerParams()
@@ -61,7 +61,16 @@ def room_high_low_planner(env, nz, nu, enc, dynamics, a_probe, empirical_mdp, km
 
     t_param = opt_params.t_param
     iter_num = opt_params.iter_num
-    for t in tqdm(range(T), desc='hj_mpc'):
+    actual_steps = 0
+    
+    for t in tqdm(range(T), desc='high_low_mpc'):
+        # Check if goal reached (early termination)
+        current_distance = np.linalg.norm(gt_agent_state - target_gt_agent_state)
+        if current_distance <= success_threshold:
+            print(f"Goal reached at step {t}! Distance: {current_distance:.4f}")
+            actual_steps = t
+            break
+            
         start_time = time.time()
 
         # call high level planner
@@ -121,8 +130,14 @@ def room_high_low_planner(env, nz, nu, enc, dynamics, a_probe, empirical_mdp, km
 
         run_time = time.time() - start_time
         mpc_time.append(run_time)
+        actual_steps = t + 1
 
-    print(f'simulation steps: {T}, total runtime: {sum(mpc_time)}')
+    print(f'simulation steps: {actual_steps}, total runtime: {sum(mpc_time):.2f}s')
+
+    # trim logs to actual length
+    lat_state_log = lat_state_log[:actual_steps+1]
+    control_log = control_log[:actual_steps]
+    gt_agent_state_log = gt_agent_state_log[:actual_steps+1]
 
     mpc_data = {'grounded_states': gt_agent_state_log, 'actions': control_log, 'mpc_time': mpc_time,
                 'target_grounded_state': target_gt_agent_state, 'lat_state_log': lat_state_log,
@@ -136,7 +151,7 @@ def room_high_low_planner(env, nz, nu, enc, dynamics, a_probe, empirical_mdp, km
 def room_low_planner(env, nz, nu, enc, dynamics, a_probe, empirical_mdp, kmeans, cluster_trans,
                     init_gt_agent_state, init_lat_state, init_mdp_state, 
                     target_gt_agent_state, target_lat_state, target_mdp_state,
-                    save_path = None, augmented = False):
+                    save_path = None, augmented = False, success_threshold = 0.030):
     # use both high-level and low-level planner in the room env. 
 
     opt_params = LowPlannerParams()
@@ -166,7 +181,16 @@ def room_low_planner(env, nz, nu, enc, dynamics, a_probe, empirical_mdp, kmeans,
 
     t_param = opt_params.t_param
     iter_num = opt_params.iter_num
-    for t in tqdm(range(T), desc='hj_mpc'):
+    actual_steps = 0
+    
+    for t in tqdm(range(T), desc='low_mpc'):
+        # Check if goal reached (early termination)
+        current_distance = np.linalg.norm(gt_agent_state - target_gt_agent_state)
+        if current_distance <= success_threshold:
+            print(f"Goal reached at step {t}! Distance: {current_distance:.4f}")
+            actual_steps = t
+            break
+            
         start_time = time.time()
 
         tracking_cost_fcn = Tracking_Cost(dynamics, z_t, target_lat_state)
@@ -208,8 +232,14 @@ def room_low_planner(env, nz, nu, enc, dynamics, a_probe, empirical_mdp, kmeans,
 
         run_time = time.time() - start_time
         mpc_time.append(run_time)
+        actual_steps = t + 1
 
-    print(f'simulation steps: {T}, total runtime: {sum(mpc_time)}')
+    print(f'simulation steps: {actual_steps}, total runtime: {sum(mpc_time):.2f}s')
+
+    # Trim logs to actual length
+    lat_state_log = lat_state_log[:actual_steps+1]
+    control_log = control_log[:actual_steps]
+    gt_agent_state_log = gt_agent_state_log[:actual_steps+1]
 
     mpc_data = {'grounded_states': gt_agent_state_log, 'actions': control_log, 'mpc_time': mpc_time,
                 'target_grounded_state': target_gt_agent_state, 'lat_state_log': lat_state_log}
