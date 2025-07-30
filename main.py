@@ -200,8 +200,7 @@ if __name__ == '__main__':
     # training args
     train_args = parser.add_argument_group('wandb setup')
     train_args.add_argument("--opr", default="high-low-plan",
-                            choices=['generate-data', 'train', 'cluster-latent',
-                                     'generate-mdp', 'high-low-plan'])
+                        choices=['generate-data', 'train', 'cluster-latent', 'generate-mdp', 'high-low-plan', 'evaluate-planners'])
     train_args.add_argument("--latent-dim", default=256, type=int)
     train_args.add_argument("--num-data-samples", default=500000, type=int)
     train_args.add_argument("--k_embedding_dim", default=45, type=int)
@@ -1040,6 +1039,283 @@ if __name__ == '__main__':
         print(f"Saved figure to {fig_path}")
         plt.savefig(os.path.join(traj_opt_fig_dir, f'{exp_id}.png'), dpi = 600)
         plt.clf()
- 
+
+    elif args.opr == 'evaluate-planners':
+        task_dir = 'tasks'
+        eval_dir = os.path.join(task_dir, args.env, 'evaluation')
+        os.makedirs(eval_dir, exist_ok=True)
+        
+        test_set_path = os.path.join(eval_dir, f'test_set_{args.env}.p')
+        
+        print(f"Loading test set from: {test_set_path}")
+        test_set_data = pickle.load(open(test_set_path, 'rb'))
+        test_cases = test_set_data['test_cases']
+
+        mdp_path = os.path.join(logdir, 'empirical_mdp.p')
+        empirical_mdp = pickle.load(open(mdp_path, 'rb'))
+
+        model_path = os.path.join(data_folder, 'model.p') 
+        model = torch.load(model_path, map_location=torch.device('cpu'))
+        enc.load_state_dict(model['enc'])
+        enc.eval().to(device)
+
+        forward.load_state_dict(model['forward'])
+        forward.eval().to(device)
+
+        dynamics = LatentWrapper(forward)
+        dynamics.eval()
+
+        cluster_trans = Cluster_Transform(enc, forward, device=device)
+        a_probe.load_state_dict(model['a_probe'])
+
+        kmeans_path = os.path.join(logdir, 'kmeans_info.p')
+        kmeans_info = pickle.load(open(kmeans_path, 'rb'))
+        kmeans = kmeans_info['kmeans']
+        grounded_cluster_centers = kmeans_info['grounded-cluster-center']
+
+        # success threshold
+        SUCCESS_THRESHOLD = 0.030
+        
+        # Evaluation results storage
+        results = {
+            'high_low': {
+                'successes': 0,
+                'total_time': [],
+                'path_lengths': [],
+                'final_distances': [],
+                'episodes_data': []
+            },
+            'low': {
+                'successes': 0,
+                'total_time': [],
+                'path_lengths': [],
+                'final_distances': [],
+                'episodes_data': []
+            },
+            'test_set_info': test_set_data,
+            'evaluation_seed': args.seed,
+            'exp_id': args.exp_id,
+            'timestamp': time.time()
+        }
+        
+        for test_case in tqdm(test_cases, desc=f"Evaluating {args.env} planners"):
+            episode_idx = test_case['test_id']
+            start_pos = test_case['start_pos']
+            goal_pos = test_case['goal_pos']
+            
+            print(f"\n=== Test {episode_idx + 1}/{len(test_cases)} ===")
+            print(f"Start: [{start_pos[0]:.3f}, {start_pos[1]:.3f}], Goal: [{goal_pos[0]:.3f}, {goal_pos[1]:.3f}]")
+            
+            start_obs = env.synth_obs(start_pos)
+            goal_obs = env.synth_obs(goal_pos) 
+            
+            start_lat_state = enc(torch.FloatTensor(start_obs).to(device))
+            goal_lat_state = enc(torch.FloatTensor(goal_obs).to(device))
+            
+            start_aug_latent = cluster_trans.cluster_label_transform_latent(start_lat_state, do_augment=args.use_augmented_latent_clustering)
+            goal_aug_latent = cluster_trans.cluster_label_transform_latent(goal_lat_state, do_augment=args.use_augmented_latent_clustering)
+            
+            start_mdp_state = kmeans.predict(start_aug_latent.detach().cpu())[0]
+            goal_mdp_state = kmeans.predict(goal_aug_latent.detach().cpu())[0]
+            
+            print(f"Abstract states - Start: {start_mdp_state}, Goal: {goal_mdp_state}")
+            
+            planners = [
+                ('high_low', room_high_low_planner),
+                ('low', room_low_planner)
+            ]
+            
+            for planner_name, planner_func in planners:
+                print(f"\n--- Testing {planner_name} planner ---")
+                
+                try:
+                    # Run planner
+                    planner_start_time = time.time()
+                    mpc_data = planner_func(
+                        env, start_lat_state.shape[1], 2, enc, dynamics, a_probe, 
+                        empirical_mdp, kmeans, cluster_trans,
+                        np.array(start_pos), start_lat_state, start_mdp_state,
+                        np.array(goal_pos), goal_lat_state, goal_mdp_state,
+                        save_path=None, augmented=args.use_augmented_latent_clustering
+                    )
+                    total_time = time.time() - planner_start_time
+                    
+                    # Extract results
+                    final_pos = mpc_data['grounded_states'][-1]
+                    final_distance = np.linalg.norm(final_pos - np.array(goal_pos))
+                    path_length = np.sum([np.linalg.norm(mpc_data['grounded_states'][i+1] - mpc_data['grounded_states'][i]) 
+                                        for i in range(len(mpc_data['grounded_states'])-1)])
+                    
+                    # Check success
+                    success = final_distance <= SUCCESS_THRESHOLD
+                    num_steps = len(mpc_data['grounded_states']) - 1
+                    
+                    # Store results
+                    results[planner_name]['final_distances'].append(final_distance)
+                    results[planner_name]['total_time'].append(total_time)
+                    results[planner_name]['path_lengths'].append(path_length)
+                    results[planner_name]['episodes_data'].append({
+                        'test_id': episode_idx,
+                        'start_pos': start_pos,
+                        'goal_pos': goal_pos,
+                        'final_pos': final_pos.tolist(),
+                        'success': success,
+                        'final_distance': final_distance,
+                        'path_length': path_length,
+                        'total_time': total_time,
+                        'num_steps': num_steps,
+                        'trajectory': mpc_data['grounded_states'].tolist(),
+                        'start_mdp_state': start_mdp_state,
+                        'goal_mdp_state': goal_mdp_state
+                    })
+                    
+                    if success:
+                        results[planner_name]['successes'] += 1
+                    
+                    print(f"{planner_name}: Success={success}, Final dist={final_distance:.4f}, Steps={num_steps}, Time={total_time:.2f}s")
+                    
+                except Exception as e:
+                    print(f"ERROR with {planner_name} planner: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    # Record failure
+                    results[planner_name]['episodes_data'].append({
+                        'test_id': episode_idx,
+                        'start_pos': start_pos,
+                        'goal_pos': goal_pos,
+                        'success': False,
+                        'error': str(e),
+                        'start_mdp_state': start_mdp_state,
+                        'goal_mdp_state': goal_mdp_state
+                    })
+
+        # Calculate and print final results
+        NUM_EVAL_EPISODES = len(test_cases)
+        print("\n" + "="*80)
+        print(f"EVALUATION RESULTS")
+        print(f"Environment: {args.env} | Seed: {args.seed} | Exp ID: {args.exp_id}")
+        print("="*80)
+        
+        summary_stats = {}
+        
+        for planner_name in ['high_low', 'low']:
+            data = results[planner_name]
+            success_rate = data['successes'] / NUM_EVAL_EPISODES * 100
+            
+            print(f"\n{planner_name.upper()} PLANNER:")
+            print(f"  Success Rate: {success_rate:.1f}% ({data['successes']}/{NUM_EVAL_EPISODES})")
+            
+            summary_stats[f'{planner_name}_success_rate'] = success_rate
+            
+            if len(data['final_distances']) > 0:
+                avg_final_dist = np.mean(data['final_distances'])
+                avg_path_length = np.mean(data['path_lengths'])
+                avg_runtime = np.mean(data['total_time'])
+                
+                print(f"  Average Final Distance: {avg_final_dist:.4f} ± {np.std(data['final_distances']):.4f}")
+                print(f"  Average Path Length: {avg_path_length:.4f} ± {np.std(data['path_lengths']):.4f}")
+                print(f"  Average Runtime: {avg_runtime:.2f}s ± {np.std(data['total_time']):.2f}s")
+                
+                summary_stats[f'{planner_name}_avg_final_dist'] = avg_final_dist
+                summary_stats[f'{planner_name}_avg_path_length'] = avg_path_length
+                summary_stats[f'{planner_name}_avg_runtime'] = avg_runtime
+            
+            # Success-only statistics
+            success_episodes = [ep for ep in data['episodes_data'] if ep.get('success', False)]
+            if success_episodes:
+                success_times = [ep['total_time'] for ep in success_episodes]
+                success_distances = [ep['final_distance'] for ep in success_episodes]
+                success_steps = [ep['num_steps'] for ep in success_episodes if 'num_steps' in ep]
+                
+                avg_success_time = np.mean(success_times)
+                avg_success_dist = np.mean(success_distances)
+                
+                print(f"  Successful Episodes Only:")
+                print(f"    - Avg Time: {avg_success_time:.2f}s ± {np.std(success_times):.2f}s")
+                print(f"    - Avg Final Dist: {avg_success_dist:.4f} ± {np.std(success_distances):.4f}")
+                if success_steps:
+                    avg_success_steps = np.mean(success_steps)
+                    print(f"    - Avg Steps: {avg_success_steps:.1f} ± {np.std(success_steps):.1f}")
+                    summary_stats[f'{planner_name}_avg_success_steps'] = avg_success_steps
+                
+                summary_stats[f'{planner_name}_avg_success_time'] = avg_success_time
+                summary_stats[f'{planner_name}_avg_success_dist'] = avg_success_dist
+
+        # Add summary stats to results
+        results['summary_stats'] = summary_stats
+
+        # Save detailed results
+        results_filename = f'evaluation_results_{args.env}_seed{args.seed}_{args.exp_id}.p'
+        results_path = os.path.join(eval_dir, results_filename)
+        pickle.dump(results, open(results_path, 'wb'))
+        print(f"\nDetailed results saved to: {results_path}")
+
+        # Create summary plot
+        fig, axes = plt.subplots(2, 2, figsize=(15, 10))
+        
+        # Success rates
+        planners = ['high_low', 'low']
+        success_rates = [results[p]['successes']/NUM_EVAL_EPISODES*100 for p in planners]
+        bars = axes[0,0].bar(planners, success_rates, color=['r', 'b'], alpha=0.8)
+        axes[0,0].set_ylabel('Success Rate (%)', fontsize=12)
+        axes[0,0].set_title(f'Success Rates - Seed {args.seed}', fontsize=14)
+        axes[0,0].set_ylim(0, 100)
+        # Add percentage labels on bars
+        for bar, rate in zip(bars, success_rates):
+            axes[0,0].text(bar.get_x() + bar.get_width()/2, bar.get_height() + 1, 
+                        f'{rate:.1f}%', ha='center', va='bottom', fontsize=11)
+        
+        # Final distances
+        colors = ['r','b']
+        for i, planner in enumerate(planners):
+            if len(results[planner]['final_distances']) > 0:
+                axes[0,1].hist(results[planner]['final_distances'], alpha=0.6, 
+                            label=planner.replace('_', '-'), bins=20, color=colors[i])
+        axes[0,1].axvline(SUCCESS_THRESHOLD, color='red', linestyle='--', linewidth=2, label='Success Threshold')
+        axes[0,1].set_xlabel('Final Distance to Goal', fontsize=12)
+        axes[0,1].set_ylabel('Count', fontsize=12)
+        axes[0,1].set_title('Distribution of Final Distances', fontsize=14)
+        axes[0,1].legend()
+        
+        # Runtime comparison
+        runtime_data = [results[p]['total_time'] for p in planners if len(results[p]['total_time']) > 0]
+        labels = [p.replace('_', '-') for p in planners]
+        if len(runtime_data) == 2:
+            bp = axes[1,0].boxplot(runtime_data, labels=labels, patch_artist=True)
+            for patch, color in zip(bp['boxes'], colors):
+                patch.set_facecolor(color)
+                patch.set_alpha(0.7)
+            axes[1,0].set_ylabel('Runtime (seconds)', fontsize=12)
+            axes[1,0].set_title('Runtime Comparison', fontsize=14)
+        
+        # Path lengths
+        pathlength_data = [results[p]['path_lengths'] for p in planners if len(results[p]['path_lengths']) > 0]
+        if len(pathlength_data) == 2:
+            bp = axes[1,1].boxplot(pathlength_data, labels=labels, patch_artist=True)
+            for patch, color in zip(bp['boxes'], colors):
+                patch.set_facecolor(color)
+                patch.set_alpha(0.7)
+            axes[1,1].set_ylabel('Path Length', fontsize=12)
+            axes[1,1].set_title('Path Length Comparison', fontsize=14)
+        
+        plt.suptitle(f'Evaluation Summary - {args.env} - Seed {args.seed} - {args.exp_id}', fontsize=16)
+        plt.tight_layout()
+        
+        plot_filename = f'evaluation_summary_{args.env}_seed{args.seed}_{args.exp_id}.png'
+        plot_path = os.path.join(eval_dir, plot_filename)
+        plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        print(f"Summary plot saved to: {plot_path}")
+        
+        if args.use_wandb:
+            wandb.log({
+                f'eval_seed{args.seed}/high_low_success_rate': summary_stats['high_low_success_rate'],
+                f'eval_seed{args.seed}/low_success_rate': summary_stats['low_success_rate'],
+                f'eval_seed{args.seed}/summary_plot': wandb.Image(plot_path)
+            })
+        
+        print(f"\nEvaluation complete!")
+
     else:
         raise ValueError()
