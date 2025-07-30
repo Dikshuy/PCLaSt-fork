@@ -187,19 +187,18 @@ class RoomPolygonObstacleEnv:
         return x
 
     def synth_obs(self, ap):
-        x = np.zeros(shape=(100, 100))
-
-        x[int(round(ap[0] * 100)), int(round(ap[1] * 100))] += 1
+        x = np.zeros(shape=(1, 100, 100))
+        x[:, int(round(ap[0] * 100)), int(round(ap[1] * 100))] += 1
 
         # x = self.blur_obs(x)
 
-        return x.flatten()
+        return x
 
     def get_obs(self):
-        x = np.zeros(shape=(100, 100))
+        x = np.zeros(shape=(1, 100, 100))
 
         agent_pos = copy.deepcopy(self.agent_pos)
-        x[min(99, int(round(agent_pos[0] * 100))), min(99, int(round(agent_pos[1] * 100)))] += 1
+        x[:, min(99, int(round(agent_pos[0] * 100))), min(99, int(round(agent_pos[1] * 100)))] += 1
 
         # x = self.blur_obs(x)
 
@@ -207,7 +206,7 @@ class RoomPolygonObstacleEnv:
 
         exo = [0.0, 0.0]
 
-        return x.flatten(), agent_pos, exo
+        return x, agent_pos, exo
 
 class RoomMultiPassageEnv:
 
