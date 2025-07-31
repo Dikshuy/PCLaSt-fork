@@ -1098,6 +1098,8 @@ if __name__ == '__main__':
             'timestamp': time.time()
         }
         
+        from traj_opt.room_planner import room_high_low_planner, room_low_planner
+
         for test_case in tqdm(test_cases, desc=f"Evaluating {args.env} planners"):
             episode_idx = test_case['test_id']
             start_pos = test_case['start_pos']
