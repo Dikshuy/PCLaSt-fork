@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --account=rrg-mtaylor3
+#SBATCH --account=def-mtaylor3
 #SBATCH --mem-per-cpu=128G
 #SBATCH --time=10:00:00
 #SBATCH --ntasks=1
@@ -8,12 +8,6 @@
 #SBATCH --job-name=pclast_multi_env
 #SBATCH --output=logs/pclast_env_%a.out
 #SBATCH --error=logs/pclast_env_%a.err
-
-module load python
-module load httpproxy
-source .venv/bin/activate
-pip install --no-index wandb
-wandb login $API_KEY
 
 ENVS=(
     "room-multi-passage"
