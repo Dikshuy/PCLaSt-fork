@@ -17,11 +17,11 @@ wandb login $API_KEY
 
 ENVS=(
     "room-multi-passage"
-    "polygon-obs" 
+    "polygon-obs"
     "room-spiral"
 )
 
-NUM_SEEDS=5
+NUM_SEEDS=10
 env_index=$((SLURM_ARRAY_TASK_ID / NUM_SEEDS))
 seed=$((SLURM_ARRAY_TASK_ID % NUM_SEEDS))
 
@@ -37,6 +37,12 @@ mkdir -p logs/seed_${seed}
 logdir="logs/seed_${seed}"
 
 echo "Log directory: $logdir"
+
+# unique wandb run name
+export WANDB_RUN_NAME="${env}_seed_${seed}_job_${SLURM_ARRAY_TASK_ID}"
+
+set -e
+
 echo "================================================================================================="
 
 python main.py --env ${env} --opr generate-data --seed ${seed} --logdir ${logdir}
