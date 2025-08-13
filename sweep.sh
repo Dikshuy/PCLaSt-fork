@@ -4,7 +4,7 @@
 #SBATCH --time=10:00:00
 #SBATCH --ntasks=1
 #SBATCH --gres=gpu:1
-#SBATCH --array=0-14
+#SBATCH --array=0-29
 #SBATCH --job-name=pclast_multi_env
 #SBATCH --output=logs/pclast_env_%a.out
 #SBATCH --error=logs/pclast_env_%a.err
