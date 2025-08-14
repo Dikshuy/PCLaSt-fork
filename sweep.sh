@@ -40,7 +40,7 @@ set -e
 echo "================================================================================================="
 
 python main.py --env ${env} --opr generate-data --seed ${seed} --logdir ${logdir}
-python main.py --env ${env} --opr train --seed ${seed} --logdir ${logdir}
+python main.py --env ${env} --opr train --max_k 10 --contrastive --contrastive_k 2 --ndiscrete 64 --seed ${seed} --logdir ${logdir}
 python main.py --env ${env} --opr cluster-latent --seed ${seed} --logdir ${logdir}
 python main.py --env ${env} --opr generate-mdp --seed ${seed} --logdir ${logdir}
 python main.py --env ${env} --opr high-low-plan --from_to 2 15 --seed ${seed} --logdir ${logdir}
